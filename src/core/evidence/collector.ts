@@ -195,6 +195,71 @@ export class EvidenceCollector {
     }
   }
 
+  async captureImages(
+    page: Page
+  ): Promise<Array<{
+    src: string;
+    alt: string | null;
+    role: string | null;
+    ariaLabel: string | null;
+    isVisible: boolean;
+    width: number;
+    height: number;
+    selector: string;
+  }>> {
+    try {
+      return await page.evaluate(() => {
+        const images: Array<{
+          src: string;
+          alt: string | null;
+          role: string | null;
+          ariaLabel: string | null;
+          isVisible: boolean;
+          width: number;
+          height: number;
+          selector: string;
+        }> = [];
+
+        document.querySelectorAll('img, svg[role="img"], [role="img"]').forEach((el) => {
+          const htmlEl = el as HTMLElement;
+          const rect = htmlEl.getBoundingClientRect();
+          const style = window.getComputedStyle(htmlEl);
+          const isVisible =
+            style.display !== 'none' &&
+            style.visibility !== 'hidden' &&
+            style.opacity !== '0' &&
+            rect.width > 0 &&
+            rect.height > 0;
+
+          const src = htmlEl.getAttribute('src') || htmlEl.getAttribute('data-src') || '';
+          const alt = htmlEl.hasAttribute('alt') ? htmlEl.getAttribute('alt') : null;
+          const role = htmlEl.getAttribute('role');
+          const ariaLabel = htmlEl.getAttribute('aria-label');
+          const selector = htmlEl.id
+            ? `#${htmlEl.id}`
+            : htmlEl.className
+              ? `${htmlEl.tagName.toLowerCase()}.${String(htmlEl.className).split(' ')[0]}`
+              : htmlEl.tagName.toLowerCase();
+
+          images.push({
+            src,
+            alt,
+            role,
+            ariaLabel,
+            isVisible,
+            width: Math.round(rect.width),
+            height: Math.round(rect.height),
+            selector,
+          });
+        });
+
+        return images;
+      });
+    } catch {
+      return [];
+    }
+  }
+
   getArtifactPath(category: string, name: string): string {
     return join(this.baseDir, category, name);
   }

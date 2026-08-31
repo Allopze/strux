@@ -38,6 +38,10 @@ program
   .option('--max-depth <n>', 'Maximum exploration depth', parseInt)
   .option('--html', 'Generate HTML report')
   .option('--no-tui', 'Disable live terminal dashboard')
+  .option('--fail-on <severity>', 'Fail with exit code 1 if findings reach or exceed severity (critical, high, medium, low, info)')
+  .option('--max-findings <n>', 'Maximum allowed findings before failing with exit code 1', parseInt)
+  .option('--baseline <path>', 'Path to baseline file for suppressing known findings')
+  .option('--update-baseline', 'Update or create baseline file with current findings')
   .action(async (url?: string, options?: Record<string, unknown>) => {
     try {
       const opts = options ?? {};
@@ -106,8 +110,47 @@ program
       }
 
       const dashboard = opts['tui'] !== false ? new LiveDashboard(config.target.url) : undefined;
-      const orchestrator = new Orchestrator({ config, provider, dashboard });
-      await orchestrator.run();
+      const orchestrator = new Orchestrator({
+        config,
+        provider,
+        dashboard,
+        baselinePath: opts['baseline'] as string | undefined,
+        updateBaseline: Boolean(opts['updateBaseline']),
+      });
+      const result = await orchestrator.run();
+
+      // Check CI failure thresholds
+      const failOn = opts['failOn'] ? String(opts['failOn']).toUpperCase() : undefined;
+      const maxFindings = typeof opts['maxFindings'] === 'number' ? (opts['maxFindings'] as number) : undefined;
+
+      let shouldFail = false;
+      let failureReason = '';
+
+      if (failOn) {
+        const severities = ['INFO', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+        const minIndex = severities.indexOf(failOn);
+        if (minIndex !== -1) {
+          for (let i = minIndex; i < severities.length; i++) {
+            const sev = severities[i] as keyof typeof result.summary.findingsBySeverity;
+            const count = result.summary.findingsBySeverity[sev] ?? 0;
+            if (count > 0) {
+              shouldFail = true;
+              failureReason = `Found ${count} ${sev} finding(s) (threshold: --fail-on ${failOn.toLowerCase()})`;
+              break;
+            }
+          }
+        }
+      }
+
+      if (!shouldFail && maxFindings !== undefined && result.summary.totalFindings > maxFindings) {
+        shouldFail = true;
+        failureReason = `Total findings (${result.summary.totalFindings}) exceeded threshold (--max-findings ${maxFindings})`;
+      }
+
+      if (shouldFail) {
+        console.error(chalk.red(`\n  ✖ CI Threshold Failed: ${failureReason}\n`));
+        process.exit(1);
+      }
     } catch (err) {
       console.error(chalk.red(`\n  ✖ Audit failed: ${err instanceof Error ? err.message : err}`));
       process.exit(1);

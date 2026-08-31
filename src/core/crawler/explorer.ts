@@ -10,10 +10,19 @@ import { Logger } from '../logger.js';
 
 const log = new Logger({ prefix: 'Explorer' });
 
+import { fetchSitemapUrls } from './sitemap.js';
+
 export interface ExplorerOptions {
   config: AuditConfig;
   page: Page;
   evidence: EvidenceCollector;
+}
+
+interface ExplorationTask {
+  parentStateId: string;
+  action: Action;
+  depth: number;
+  parentActions: Action[];
 }
 
 /**
@@ -51,6 +60,9 @@ export class Explorer {
     // Set up console and network listeners
     this.setupListeners();
 
+    // Discover routes from sitemap if available
+    const sitemapUrls = await fetchSitemapUrls(this.config.target.url).catch(() => []);
+
     // Navigate to target
     log.info(`Navigating to ${this.config.target.url}`);
     await this.page.goto(this.config.target.url, {
@@ -73,6 +85,24 @@ export class Explorer {
 
     // Seed queue with root state's interactable elements
     this.enqueueInteractions(rootState);
+
+    // Enqueue sitemap routes as direct navigate actions
+    for (const url of sitemapUrls) {
+      if (url !== this.config.target.url && normalizeUrl(url) !== rootState.normalizedUrl) {
+        this.explorationQueue.push({
+          parentStateId: rootState.id,
+          action: {
+            type: 'navigate',
+            selector: 'window',
+            value: url,
+            label: `Sitemap: ${url}`,
+            risk: 'SAFE',
+          },
+          depth: 1,
+          parentActions: [],
+        });
+      }
+    }
 
     // Process exploration queue
     let processed = 0;
@@ -191,6 +221,7 @@ export class Explorer {
       // Capture headings and landmarks
       const headings = await this.evidence.captureHeadings(this.page);
       const landmarks = await this.evidence.captureLandmarks(this.page);
+      const images = await this.evidence.captureImages(this.page);
 
       const vp = this.page.viewportSize();
       const viewport = {
@@ -235,7 +266,9 @@ export class Explorer {
         timestamp: Date.now(),
         consoleEntries: [...this.currentConsoleEntries],
         networkFailures: [...this.currentNetworkFailures],
-        metadata: {},
+        metadata: {
+          images,
+        },
       };
 
       this.states.set(stateId, state);

@@ -114,6 +114,15 @@ npx uiux-audit audit http://localhost:3000 --provider commandcode
 
 # 11. Run with saved Playwright storage state authentication
 npx uiux-audit audit http://localhost:3000 --storage-state ./auth/storageState.json
+
+# 12. CI/CD quality gate: fail if CRITICAL or HIGH findings exist
+npx uiux-audit audit http://localhost:3000 --fail-on high --max-findings 10
+
+# 13. Create or update defect baseline
+npx uiux-audit audit http://localhost:3000 --update-baseline
+
+# 14. Audit against baseline (suppress known findings, alert on regressions)
+npx uiux-audit audit http://localhost:3000 --baseline .uiux-audit-baseline.json
 ```
 
 ---

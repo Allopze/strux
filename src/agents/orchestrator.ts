@@ -9,6 +9,11 @@ import { EvidenceCollector } from '../core/evidence/collector.js';
 import { deduplicateStates } from '../core/states/dedup.js';
 import { RuleEngine } from '../core/rules/engine.js';
 import { headingOrderRule, landmarkRule, runAxeAnalysis } from '../core/rules/accessibility.js';
+import { imageAltRule } from '../core/rules/images.js';
+import { runContrastAnalysis } from '../core/rules/contrast.js';
+import { runKeyboardAnalysis } from '../core/rules/keyboard.js';
+import { runLinkValidation } from '../core/rules/link-checker.js';
+import { BaselineManager } from '../core/baseline/manager.js';
 import { touchTargetRule, overflowRule } from '../core/rules/touch-targets.js';
 import { formLabelsRule, formSubmitRule } from '../core/rules/forms.js';
 import { deadLinksRule, networkErrorsRule } from '../core/rules/navigation.js';
@@ -31,6 +36,8 @@ export interface OrchestratorOptions {
   config: AuditConfig;
   provider?: LLMProvider;
   dashboard?: LiveDashboard;
+  baselinePath?: string;
+  updateBaseline?: boolean;
 }
 
 /**
@@ -44,6 +51,8 @@ export class Orchestrator {
   private evidence: EvidenceCollector;
   private ruleEngine: RuleEngine;
   private dashboard?: LiveDashboard;
+  private baselinePath?: string;
+  private updateBaseline?: boolean;
 
   constructor(
     configOrOptions: AuditConfig | OrchestratorOptions,
@@ -54,6 +63,8 @@ export class Orchestrator {
       this.config = configOrOptions.config;
       this.provider = configOrOptions.provider;
       this.dashboard = configOrOptions.dashboard;
+      this.baselinePath = configOrOptions.baselinePath;
+      this.updateBaseline = configOrOptions.updateBaseline;
     } else {
       this.config = configOrOptions;
       this.provider = provider;
@@ -67,6 +78,7 @@ export class Orchestrator {
     this.ruleEngine.registerAll([
       headingOrderRule,
       landmarkRule,
+      imageAltRule,
       touchTargetRule,
       overflowRule,
       formLabelsRule,
@@ -113,27 +125,31 @@ export class Orchestrator {
       uniqueStates = dedupResult.uniqueStates;
       this.dashboard?.updateStateCounts(allStates.length, uniqueStates.length);
 
-      // 4. Run axe-core on each unique state (requires page navigation and state reconstruction)
-      this.dashboard?.setPhase(3, 'Ejecutando análisis de accesibilidad WCAG (axe-core)...', { current: 0, total: uniqueStates.length });
-      log.info('Phase 3: Running accessibility analysis...');
-      const axeFindings: Finding[] = [];
+      // 4. Run axe-core, contrast, and keyboard analysis on each unique state
+      this.dashboard?.setPhase(3, 'Ejecutando análisis de accesibilidad WCAG (axe-core, contraste, teclado)...', { current: 0, total: uniqueStates.length });
+      log.info('Phase 3: Running accessibility analysis (axe-core, contrast, keyboard)...');
+      const a11yFindings: Finding[] = [];
       for (const [i, state] of uniqueStates.entries()) {
         try {
           await navigateToState(worker.page, state);
           await worker.page.waitForTimeout(300);
-          const findings = await runAxeAnalysis(worker.page, state);
-          axeFindings.push(...findings);
+
+          const axeResults = await runAxeAnalysis(worker.page, state);
+          const contrastResults = await runContrastAnalysis(worker.page, state);
+          const keyboardResults = await runKeyboardAnalysis(worker.page, state);
+
+          a11yFindings.push(...axeResults, ...contrastResults, ...keyboardResults);
         } catch (err) {
-          log.debug(`axe analysis failed for state ${state.id}: ${err}`);
+          log.debug(`accessibility analysis failed for state ${state.id}: ${err}`);
         }
 
-        this.dashboard?.setPhase(3, 'Ejecutando análisis de accesibilidad WCAG (axe-core)...', { current: i + 1, total: uniqueStates.length });
+        this.dashboard?.setPhase(3, 'Ejecutando análisis de accesibilidad WCAG (axe-core, contraste, teclado)...', { current: i + 1, total: uniqueStates.length });
         if ((i + 1) % 5 === 0 || i === uniqueStates.length - 1) {
-          log.progress('axe-core analysis', i + 1, uniqueStates.length);
+          log.progress('accessibility analysis', i + 1, uniqueStates.length);
         }
       }
-      allFindings.push(...axeFindings);
-      this.dashboard?.addFindings(axeFindings);
+      allFindings.push(...a11yFindings);
+      this.dashboard?.addFindings(a11yFindings);
 
       // 5. Run deterministic rules on all unique states
       this.dashboard?.setPhase(4, 'Ejecutando reglas deterministas de layout, formularios y enlaces...');
@@ -145,6 +161,11 @@ export class Orchestrator {
       });
       allFindings.push(...ruleFindings);
       this.dashboard?.addFindings(ruleFindings);
+
+      // 5.0 HTTP live link validation
+      const liveLinkFindings = await runLinkValidation(uniqueStates, this.config.target.url);
+      allFindings.push(...liveLinkFindings);
+      this.dashboard?.addFindings(liveLinkFindings);
 
       // 5.1 Responsive analysis across configured viewports
       if (this.config.audit.responsive) {
@@ -244,6 +265,18 @@ export class Orchestrator {
         log.info('Phase 8: Mapping findings to source code...');
         const codeMapper = new CodeMapper(this.config.repo.path);
         allFindings = await codeMapper.mapFindings(allFindings);
+      }
+
+      // 9.5 Baseline handling (Suppression or update)
+      const baselineFile = this.baselinePath ?? '.uiux-audit-baseline.json';
+      if (this.updateBaseline) {
+        BaselineManager.saveBaseline(baselineFile, allFindings, this.config.target.url);
+      } else {
+        const baseline = BaselineManager.loadBaseline(baselineFile);
+        if (baseline) {
+          const { active } = BaselineManager.filterFindings(allFindings, baseline);
+          allFindings = active;
+        }
       }
 
       // 10. Generate summary
