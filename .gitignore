@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.log
+.env
+.env.*
+uiux-audit-results/
+test-results/
+test-results-integration/
+*.deb
+.DS_Store

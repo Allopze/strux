@@ -1,0 +1,45 @@
+{
+  "name": "uiux-auditor",
+  "version": "0.1.0",
+  "description": "Autonomous UI/UX auditor powered by Playwright, axe-core, and optional AI analysis",
+  "type": "module",
+  "bin": {
+    "uiux-audit": "./dist/cli/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:audit": "vitest run tests/integration",
+    "lint": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "keywords": [
+    "ui",
+    "ux",
+    "accessibility",
+    "audit",
+    "playwright",
+    "wcag",
+    "a11y"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@axe-core/playwright": "^4.10.1",
+    "chalk": "^5.4.1",
+    "commander": "^13.1.0",
+    "nanoid": "^5.1.5",
+    "playwright": "^1.52.0",
+    "yaml": "^2.7.1",
+    "zod": "^3.24.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.3"
+  }
+}

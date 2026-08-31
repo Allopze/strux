@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Application — Vehicle Management</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f5f5f5; color: #333; }
+
+    /* INTENTIONAL BUG: Nav has no landmark role */
+    .nav { background: #2c3e50; padding: 1rem; display: flex; gap: 1rem; }
+    .nav a { color: white; text-decoration: none; padding: 0.5rem 1rem; }
+    .nav a:hover { background: rgba(255,255,255,0.1); border-radius: 4px; }
+
+    .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+
+    /* INTENTIONAL BUG: h3 used directly, skipping h2 */
+    h1 { font-size: 1.5rem; margin-bottom: 1rem; }
+
+    .card { background: white; border-radius: 8px; padding: 1.5rem; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid #eee; }
+    th { font-weight: 600; background: #f9f9f9; }
+
+    .btn { padding: 0.5rem 1rem; border: none; border-radius: 4px; cursor: pointer; font-size: 0.875rem; }
+    .btn-primary { background: #3498db; color: white; }
+    .btn-danger { background: #e74c3c; color: white; }
+
+    /* INTENTIONAL BUG: Secondary button styled more prominently than primary */
+    .btn-secondary { background: #2c3e50; color: white; font-weight: bold; font-size: 1rem; padding: 0.75rem 1.5rem; }
+
+    /* INTENTIONAL BUG: Tiny touch target */
+    .btn-icon { width: 20px; height: 20px; padding: 2px; font-size: 10px; background: #eee; border: 1px solid #ccc; cursor: pointer; border-radius: 2px; }
+
+    .form-group { margin-bottom: 1rem; }
+    .form-group label { display: block; margin-bottom: 0.25rem; font-weight: 600; font-size: 0.875rem; }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;
+    }
+
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 100; }
+    .modal-overlay.active { display: flex; justify-content: center; align-items: center; }
+    .modal { background: white; border-radius: 12px; padding: 2rem; max-width: 500px; width: 90%; }
+    .modal h3 { margin-bottom: 1rem; }
+
+    .actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem; }
+
+    /* INTENTIONAL BUG: Overflow on mobile — table doesn't scroll */
+    .table-wrapper { /* missing overflow-x: auto */ }
+
+    /* INTENTIONAL BUG: Low contrast text */
+    .low-contrast { color: #ccc; background: #eee; padding: 0.5rem; border-radius: 4px; }
+
+    .empty-state { text-align: center; padding: 3rem; color: #999; }
+
+    .toast { position: fixed; bottom: 2rem; right: 2rem; background: #2c3e50; color: white;
+      padding: 1rem 1.5rem; border-radius: 8px; display: none; z-index: 200; }
+    .toast.show { display: block; }
+
+    .status-badge { padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+    .status-active { background: #d4edda; color: #155724; }
+    .status-inactive { background: #f8d7da; color: #721c24; }
+  </style>
+</head>
+<body>
+  <!-- INTENTIONAL BUG: no <main> element, no nav landmark -->
+  <div class="nav">
+    <a href="#dashboard">Dashboard</a>
+    <a href="#vehicles">Vehículos</a>
+    <a href="#workers">Trabajadores</a>
+    <a href="#settings">Configuración</a>
+    <!-- INTENTIONAL BUG: dead link -->
+    <a href="#">Reportes</a>
+    <!-- INTENTIONAL BUG: link with javascript:void -->
+    <a href="javascript:void(0)">Ayuda</a>
+  </div>
+
+  <div class="container" id="app">
+    <!-- Dashboard (default view) -->
+    <div id="page-dashboard">
+      <h1>Dashboard</h1>
+      <!-- INTENTIONAL BUG: skips h2, goes to h3 -->
+      <h3>Resumen general</h3>
+
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 2rem;">
+        <div class="card">
+          <div class="low-contrast">Total vehículos</div>
+          <div style="font-size: 2rem; font-weight: bold;">24</div>
+        </div>
+        <div class="card">
+          <div class="low-contrast">Trabajadores activos</div>
+          <div style="font-size: 2rem; font-weight: bold;">18</div>
+        </div>
+        <div class="card">
+          <div class="low-contrast">Solicitudes pendientes</div>
+          <div style="font-size: 2rem; font-weight: bold;">7</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Vehicle List -->
+    <div id="page-vehicles" style="display:none;">
+      <h1>Vehículos</h1>
+
+      <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+          <div>
+            <!-- INTENTIONAL BUG: input without label -->
+            <input type="text" placeholder="Buscar vehículo..." id="vehicle-search" style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+          </div>
+          <button class="btn btn-primary" onclick="showPage('vehicle-form')">+ Nuevo vehículo</button>
+        </div>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Placa</th>
+                <th>Marca</th>
+                <th>Modelo</th>
+                <th>Año</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>ABC-123</td>
+                <td>Toyota</td>
+                <td>Hilux</td>
+                <td>2022</td>
+                <td><span class="status-badge status-active">Activo</span></td>
+                <td>
+                  <button class="btn-icon" title="Editar" onclick="showPage('vehicle-form')">✏</button>
+                  <button class="btn-icon" title="Eliminar" onclick="showDeleteModal()">🗑</button>
+                </td>
+              </tr>
+              <tr>
+                <td>DEF-456</td>
+                <td>Ford</td>
+                <td>Ranger</td>
+                <td>2021</td>
+                <td><span class="status-badge status-inactive">Inactivo</span></td>
+                <td>
+                  <button class="btn-icon" title="Editar">✏</button>
+                  <button class="btn-icon" title="Eliminar" onclick="showDeleteModal()">🗑</button>
+                </td>
+              </tr>
+              <tr>
+                <td>GHI-789</td>
+                <td>Chevrolet</td>
+                <td>D-Max</td>
+                <td>2023</td>
+                <td><span class="status-badge status-active">Activo</span></td>
+                <td>
+                  <button class="btn-icon" title="Editar">✏</button>
+                  <button class="btn-icon" title="Eliminar" onclick="showDeleteModal()">🗑</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Vehicle Form -->
+    <div id="page-vehicle-form" style="display:none;">
+      <h1>Nuevo vehículo</h1>
+      <div class="card">
+        <form id="vehicle-form" onsubmit="handleSubmit(event)">
+          <div class="form-group">
+            <label for="placa">Placa</label>
+            <input type="text" id="placa" required>
+          </div>
+          <div class="form-group">
+            <label for="marca">Marca</label>
+            <select id="marca">
+              <option value="">Seleccionar...</option>
+              <option>Toyota</option>
+              <option>Ford</option>
+              <option>Chevrolet</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="modelo">Modelo</label>
+            <input type="text" id="modelo">
+          </div>
+          <div class="form-group">
+            <!-- INTENTIONAL BUG: input without label, using placeholder as label -->
+            <input type="number" placeholder="Año del vehículo" id="anio">
+          </div>
+          <div class="form-group">
+            <!-- INTENTIONAL BUG: input without id, no label connection -->
+            <input type="text" placeholder="Color">
+          </div>
+          <div class="form-group">
+            <label for="notas">Notas</label>
+            <textarea id="notas" rows="3"></textarea>
+          </div>
+
+          <div class="actions">
+            <!-- INTENTIONAL BUG: Cancel more prominent than Save -->
+            <button type="submit" class="btn btn-primary">Guardar vehículo</button>
+            <button type="button" class="btn btn-secondary" onclick="showPage('vehicles')">Cancelar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Workers (empty state) -->
+    <div id="page-workers" style="display:none;">
+      <h1>Trabajadores</h1>
+      <div class="card">
+        <div class="empty-state">
+          <p>No hay trabajadores registrados.</p>
+          <!-- INTENTIONAL BUG: button without accessible name uses only emoji -->
+          <button class="btn btn-primary" style="margin-top: 1rem;">➕</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings -->
+    <div id="page-settings" style="display:none;">
+      <h1>Configuración</h1>
+      <div class="card">
+        <p>Página de configuración.</p>
+        <!-- INTENTIONAL BUG: broken button that does nothing -->
+        <button class="btn btn-primary" style="margin-top: 1rem;" id="btn-broken">Guardar cambios</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete confirmation modal -->
+  <div class="modal-overlay" id="delete-modal">
+    <div class="modal" role="dialog" aria-labelledby="modal-title">
+      <h3 id="modal-title">Confirmar eliminación</h3>
+      <p>¿Está seguro de que desea eliminar este vehículo? Esta acción no se puede deshacer.</p>
+      <div class="actions">
+        <button class="btn btn-danger" onclick="closeDeleteModal()">Eliminar</button>
+        <button class="btn" onclick="closeDeleteModal()" style="background:#eee;">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // SPA-like navigation
+    function showPage(page) {
+      const pages = ['dashboard', 'vehicles', 'vehicle-form', 'workers', 'settings'];
+      pages.forEach(p => {
+        const el = document.getElementById('page-' + p);
+        if (el) el.style.display = p === page ? 'block' : 'none';
+      });
+      window.location.hash = page;
+    }
+
+    // Handle hash navigation
+    window.addEventListener('hashchange', () => {
+      const hash = window.location.hash.slice(1);
+      if (hash) showPage(hash);
+    });
+
+    // Initial route
+    const initialHash = window.location.hash.slice(1);
+    if (initialHash) showPage(initialHash);
+
+    // Delete modal
+    function showDeleteModal() {
+      document.getElementById('delete-modal').classList.add('active');
+    }
+    function closeDeleteModal() {
+      document.getElementById('delete-modal').classList.remove('active');
+    }
+
+    // Form submit — INTENTIONAL BUG: no feedback after submit
+    function handleSubmit(event) {
+      event.preventDefault();
+      // Does nothing visible — no feedback to user
+      console.log('Form submitted');
+    }
+
+    // INTENTIONAL BUG: console error on page load
+    console.error('Failed to load user preferences: NetworkError');
+
+    // INTENTIONAL BUG: unhandled reference
+    try {
+      // This would throw if uncommented:
+      // undefinedFunction();
+    } catch(e) {}
+
+    // Nav link handlers
+    document.querySelectorAll('.nav a').forEach(link => {
+      link.addEventListener('click', (e) => {
+        const href = link.getAttribute('href');
+        if (href && href.startsWith('#')) {
+          e.preventDefault();
+          showPage(href.slice(1));
+        }
+      });
+    });
+  </script>
+</body>
+</html>
