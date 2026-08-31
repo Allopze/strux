@@ -275,7 +275,8 @@ export class AgentChatREPL {
 
   private async queryAI(input: string): Promise<void> {
     if (!this.aiProvider) return;
-    console.log(chalk.dim('\n  Consultando a Freebuff AI... 🧠'));
+    const model = this.aiProvider.capabilities().modelName;
+    console.log(chalk.dim(`\n  Consultando a la IA (${model})... 🧠`));
 
     const context = `Target: ${this.targetUrl}\nTotal findings in memory: ${this.latestFindings.length}\nSample findings:\n` +
       JSON.stringify(this.latestFindings.slice(0, 10), null, 2);
@@ -286,7 +287,7 @@ export class AgentChatREPL {
           {
             role: 'system',
             content:
-              'You are @uiux-auditor, an expert autonomous UI/UX and accessibility lead engineer powered by Freebuff. ' +
+              'You are @uiux-auditor, an expert autonomous UI/UX and accessibility lead engineer. ' +
               'Answer the user question directly, concisely, and helpfully in Spanish based on the current audit context.',
           },
           { role: 'user', content: `Context:\n${context}\n\nUser Question:\n${input}` },
@@ -296,7 +297,7 @@ export class AgentChatREPL {
       console.log(chalk.cyan('\n  🤖 @uiux-auditor:'));
       console.log(response.content);
     } catch (err) {
-      console.log(chalk.red(`\n  ✖ Error consultando a Freebuff AI: ${err instanceof Error ? err.message : err}`));
+      console.log(chalk.red(`\n  ✖ Error consultando a la IA: ${err instanceof Error ? err.message : err}`));
     }
   }
 }
