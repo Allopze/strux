@@ -7,19 +7,25 @@ import type { Finding } from '../../core/findings/types.js';
 import { Orchestrator } from '../../agents/orchestrator.js';
 import { loadConfig } from '../../core/config/loader.js';
 import { CommandCodeProvider } from '../../providers/commandcode.js';
+import { FreebuffProvider } from '../../providers/freebuff.js';
 import { InteractiveInspector } from './inspector.js';
 import { runInteractiveLogin } from '../../core/browser/auth.js';
+import type { LLMProvider } from '../../providers/types.js';
 
 export class AgentChatREPL {
   private targetUrl: string;
   private latestFindings: Finding[] = [];
   private htmlReportPath?: string;
   private storageStatePath?: string;
-  private aiProvider?: CommandCodeProvider | null;
+  private aiProvider?: LLMProvider | null;
 
   constructor(targetUrl: string = 'http://localhost:3333') {
     this.targetUrl = targetUrl;
-    this.aiProvider = CommandCodeProvider.fromEnv();
+    if (FreebuffProvider.isAvailable()) {
+      this.aiProvider = new FreebuffProvider();
+    } else {
+      this.aiProvider = CommandCodeProvider.fromEnv();
+    }
     if (existsSync('./auth/storageState.json')) {
       this.storageStatePath = resolve('./auth/storageState.json');
     }
@@ -82,9 +88,10 @@ export class AgentChatREPL {
   }
 
   private printWelcome(): void {
+    const modelName = this.aiProvider?.capabilities().modelName || 'MiMo 2.5 (Freebuff Engine)';
     console.log(chalk.cyan('┌────────────────────────────────────────────────────────────────────────┐'));
     console.log(chalk.cyan('│') + chalk.bold.white('  🤖 UI/UX AUDITOR — Interactive Agent Chat REPL') + ' '.repeat(24) + chalk.cyan('│'));
-    console.log(chalk.cyan('│') + chalk.dim('  Escribe tus instrucciones en lenguaje natural o usa comandos directos. ') + chalk.cyan('│'));
+    console.log(chalk.cyan('│') + chalk.green(`  🧠 Motor IA: ${modelName} · En segundo plano`) + ' '.repeat(Math.max(0, 68 - 17 - modelName.length)) + chalk.cyan('│'));
     console.log(chalk.cyan('├────────────────────────────────────────────────────────────────────────┤'));
     console.log(chalk.cyan('│') + chalk.dim('  Comandos rápidos:                                                     ') + chalk.cyan('│'));
     console.log(chalk.cyan('│') + chalk.white('  • /audit [url]  ') + chalk.dim('→ Iniciar auditoría completa') + ' '.repeat(26) + chalk.cyan('│'));
