@@ -290,8 +290,32 @@ program
     console.log('');
   });
 
-if (process.argv.length <= 2) {
-  const chat = new AgentChatREPL('http://localhost:3000');
+// ── chat ──────────────────────────────────────────────────────────────
+program
+  .command('chat [url]')
+  .description('Start interactive chat REPL with UI/UX auditor agent')
+  .option('-c, --continue', 'Continue from the most recent chat session')
+  .option('--session <id>', 'Resume a specific chat session by ID or index')
+  .action(async (url?: string, options?: Record<string, unknown>) => {
+    const chat = new AgentChatREPL({
+      targetUrl: url || 'http://localhost:3000',
+      continueLatest: Boolean(options?.['continue']),
+      sessionId: options?.['session'] as string | undefined,
+    });
+    await chat.start();
+  });
+
+const args = process.argv.slice(2);
+const isContinue = args.includes('--continue') || args.includes('-c');
+const sessionIdx = args.indexOf('--session');
+const sessionId = sessionIdx !== -1 ? args[sessionIdx + 1] : undefined;
+
+if (args.length === 0 || (isContinue && args.length === 1) || (sessionId && args.length === 2)) {
+  const chat = new AgentChatREPL({
+    targetUrl: 'http://localhost:3000',
+    continueLatest: isContinue,
+    sessionId,
+  });
   await chat.start();
 } else {
   program.parse();

@@ -9,7 +9,14 @@ import { loadConfig } from '../../core/config/loader.js';
 import { CommandCodeProvider } from '../../providers/commandcode.js';
 import { InteractiveInspector } from './inspector.js';
 import { runInteractiveLogin } from '../../core/browser/auth.js';
-import type { LLMProvider, CompletionMessage } from '../../providers/types.js';
+import { SessionManager, type ChatSession } from '../../core/session/manager.js';
+import type { LLMProvider } from '../../providers/types.js';
+
+export interface ChatREPLOptions {
+  targetUrl?: string;
+  sessionId?: string;
+  continueLatest?: boolean;
+}
 
 export class AgentChatREPL {
   private targetUrl: string;
@@ -17,15 +24,29 @@ export class AgentChatREPL {
   private htmlReportPath?: string;
   private storageStatePath?: string;
   private aiProvider?: LLMProvider | null;
-  private conversationHistory: CompletionMessage[] = [];
+  private currentSession: ChatSession;
 
-  constructor(targetUrl: string = 'http://localhost:3333') {
-    this.targetUrl = targetUrl;
+  constructor(options?: ChatREPLOptions | string) {
+    const opts: ChatREPLOptions = typeof options === 'string' ? { targetUrl: options } : options || {};
+    this.targetUrl = opts.targetUrl || 'http://localhost:3000';
     this.aiProvider = CommandCodeProvider.fromEnv();
+
     if (existsSync('./auth/storageState.json')) {
       this.storageStatePath = resolve('./auth/storageState.json');
     }
     this.loadPreviousAuditIfAvailable();
+
+    // Session initialization
+    if (opts.sessionId) {
+      const loaded = SessionManager.loadSession(opts.sessionId);
+      this.currentSession = loaded || SessionManager.createSession(this.targetUrl);
+    } else if (opts.continueLatest) {
+      const latest = SessionManager.getLatestSession();
+      this.currentSession = latest || SessionManager.createSession(this.targetUrl);
+    } else {
+      // Start fresh session by default
+      this.currentSession = SessionManager.createSession(this.targetUrl);
+    }
   }
 
   private loadPreviousAuditIfAvailable(): void {
@@ -46,6 +67,15 @@ export class AgentChatREPL {
   async start(): Promise<void> {
     console.clear();
     this.printWelcome();
+
+    // If resumed session with existing messages, show brief summary
+    if (this.currentSession.messages.length > 0) {
+      console.log(chalk.dim(`  ↻ Conversación reanudada: "${this.currentSession.title}" (${this.currentSession.messages.length} mensajes previos)`));
+      const lastMsg = this.currentSession.messages[this.currentSession.messages.length - 1];
+      if (lastMsg) {
+        console.log(chalk.dim(`  Último mensaje (${lastMsg.role}): ${typeof lastMsg.content === 'string' ? lastMsg.content.slice(0, 80) : ''}...\n`));
+      }
+    }
 
     const rl = readline.createInterface({
       input: process.stdin,
@@ -91,14 +121,16 @@ export class AgentChatREPL {
     console.log(chalk.cyan('│') + chalk.bold.white('  🤖 UI/UX AUDITOR — Interactive Agent Chat REPL') + ' '.repeat(24) + chalk.cyan('│'));
     console.log(chalk.cyan('│') + chalk.green(aiLabel) + ' '.repeat(Math.max(0, 68 - aiLabel.length)) + chalk.cyan('│'));
     console.log(chalk.cyan('├────────────────────────────────────────────────────────────────────────┤'));
-    console.log(chalk.cyan('│') + chalk.dim('  Comandos rápidos:                                                     ') + chalk.cyan('│'));
+    console.log(chalk.cyan('│') + chalk.dim('  Comandos de auditoría e inspección:                                   ') + chalk.cyan('│'));
     console.log(chalk.cyan('│') + chalk.white('  • /audit [url]  ') + chalk.dim('→ Iniciar auditoría completa') + ' '.repeat(26) + chalk.cyan('│'));
     console.log(chalk.cyan('│') + chalk.white('  • /login [url]  ') + chalk.dim('→ Iniciar sesión asistida (OAuth, 2FA, JWT)') + ' '.repeat(11) + chalk.cyan('│'));
     console.log(chalk.cyan('│') + chalk.white('  • /inspect      ') + chalk.dim('→ Abrir inspector interactivo de hallazgos') + ' '.repeat(14) + chalk.cyan('│'));
     console.log(chalk.cyan('│') + chalk.white('  • /report       ') + chalk.dim('→ Abrir reporte HTML en navegador') + ' '.repeat(23) + chalk.cyan('│'));
-    console.log(chalk.cyan('│') + chalk.white('  • /freebuff     ') + chalk.dim('→ Abrir agente Freebuff (MiMo 2.5 gratis)') + ' '.repeat(17) + chalk.cyan('│'));
-    console.log(chalk.cyan('│') + chalk.white('  • /skills       ') + chalk.dim('→ Ver habilidades del squad de agentes') + ' '.repeat(18) + chalk.cyan('│'));
-    console.log(chalk.cyan('│') + chalk.white('  • /status       ') + chalk.dim('→ Ver estado de la sesión') + ' '.repeat(31) + chalk.cyan('│'));
+    console.log(chalk.cyan('├────────────────────────────────────────────────────────────────────────┤'));
+    console.log(chalk.cyan('│') + chalk.dim('  Gestión de conversaciones:                                            ') + chalk.cyan('│'));
+    console.log(chalk.cyan('│') + chalk.white('  • /sessions     ') + chalk.dim('→ Listar historial de conversaciones guardadas') + ' '.repeat(10) + chalk.cyan('│'));
+    console.log(chalk.cyan('│') + chalk.white('  • /resume <id>  ') + chalk.dim('→ Retomar una conversación previa') + ' '.repeat(23) + chalk.cyan('│'));
+    console.log(chalk.cyan('│') + chalk.white('  • /new          ') + chalk.dim('→ Iniciar una nueva conversación limpia') + ' '.repeat(17) + chalk.cyan('│'));
     console.log(chalk.cyan('│') + chalk.white('  • /exit         ') + chalk.dim('→ Salir del chat') + ' '.repeat(40) + chalk.cyan('│'));
     console.log(chalk.cyan('└────────────────────────────────────────────────────────────────────────┘'));
 
@@ -114,7 +146,29 @@ export class AgentChatREPL {
   private async handleUserInput(input: string): Promise<void> {
     const lower = input.toLowerCase().trim();
 
-    // 1. Slash commands
+    // 1. Session management commands
+    if (lower === '/sessions' || lower === '/history' || lower === 'sessions' || lower === 'history') {
+      this.listSessions();
+      return;
+    }
+
+    if (lower.startsWith('/resume') || lower.startsWith('/load')) {
+      const parts = input.split(/\s+/);
+      if (parts[1]) {
+        this.resumeSession(parts[1]);
+      } else {
+        this.listSessions();
+        console.log(chalk.yellow('  Usa: /resume <número o ID de sesión>'));
+      }
+      return;
+    }
+
+    if (lower === '/new' || lower === 'new' || lower === '/clear' || lower === 'clear') {
+      this.startNewSession();
+      return;
+    }
+
+    // 2. Audit & Tool commands
     if (lower.startsWith('/login') || lower.startsWith('login')) {
       const parts = input.split(/\s+/);
       const url = parts.find((p) => p.startsWith('http://') || p.startsWith('https://')) || this.targetUrl;
@@ -159,7 +213,7 @@ export class AgentChatREPL {
       return;
     }
 
-    // 2. All conversational queries go directly to Freebuff / AI Provider
+    // 3. Conversational AI query
     if (!this.aiProvider) {
       this.aiProvider = CommandCodeProvider.fromEnv();
     }
@@ -167,19 +221,49 @@ export class AgentChatREPL {
     if (this.aiProvider) {
       await this.queryAI(input);
     } else {
-      console.log(chalk.cyan('\n  🤖 Freebuff es un agente de terminal autónomo que no requiere API Keys.'));
-      console.log('  Tienes dos formas de usar Freebuff con UI/UX Auditor:');
-      console.log(`  1. Escribe ${chalk.bold.green('/freebuff')} aquí para abrir el agente Freebuff con este proyecto cargado.`);
-      console.log(`  2. O ejecuta ${chalk.bold.green('freebuff')} directamente en tu terminal.`);
-      console.log(chalk.dim('     Freebuff leerá AGENTS.md, ejecutará auditorías y corregirá el código automáticamente.'));
-      console.log('');
-      console.log('  Comandos de herramientas disponibles:');
-      console.log(`    ${chalk.cyan('/audit [url]')}   → Iniciar auditoría completa`);
-      console.log(`    ${chalk.cyan('/login [url]')}   → Iniciar sesión asistida con navegador`);
-      console.log(`    ${chalk.cyan('/inspect')}        → Abrir inspector interactivo de hallazgos`);
-      console.log(`    ${chalk.cyan('/report')}         → Abrir reporte HTML en navegador`);
-      console.log(`    ${chalk.cyan('/freebuff')}       → Abrir el agente de codificación Freebuff`);
+      console.log(chalk.yellow('\n  ▲ No hay un proveedor de IA configurado.'));
+      console.log('  Para habilitar el chat con IA:');
+      console.log('  1. Configura tus variables de CommandCode / OpenAI / DeepSeek / Ollama:');
+      console.log(chalk.dim('     export COMMANDCODE_API_KEY="tu-key"'));
+      console.log(chalk.dim('     export COMMANDCODE_MODEL="minimax-m3-free"'));
+      console.log('  2. O escribe /freebuff para abrir el agente Freebuff con modelos gratuitos.');
     }
+  }
+
+  private listSessions(): void {
+    const sessions = SessionManager.listSessions();
+    console.log(chalk.cyan('\n  📂 Historial de Conversaciones:'));
+    if (sessions.length === 0) {
+      console.log(chalk.dim('  (No hay conversaciones guardadas aún)'));
+      return;
+    }
+
+    sessions.forEach((s, idx) => {
+      const isCurrent = s.id === this.currentSession.id;
+      const marker = isCurrent ? chalk.green('▶ [ACTUAL] ') : chalk.dim(`  [${idx + 1}] `);
+      const dateStr = new Date(s.updatedAt).toLocaleString();
+      console.log(`${marker}${chalk.bold(s.title)} ${chalk.dim(`(${s.messages.length} msgs · ${dateStr})`)}`);
+      console.log(chalk.dim(`      ID: ${s.id}`));
+    });
+    console.log(chalk.dim('\n  Para retomar una conversación previa, escribe: /resume <número o ID>'));
+  }
+
+  private resumeSession(idOrIndex: string): void {
+    const loaded = SessionManager.loadSession(idOrIndex);
+    if (!loaded) {
+      console.log(chalk.red(`\n  ✖ No se encontró ninguna conversación con el ID o número: "${idOrIndex}"`));
+      return;
+    }
+
+    this.currentSession = loaded;
+    this.targetUrl = loaded.targetUrl || this.targetUrl;
+    console.log(chalk.green(`\n  ✓ Conversación reanudada: "${loaded.title}"`));
+    console.log(chalk.dim(`    Mensajes cargados: ${loaded.messages.length} | Target: ${this.targetUrl}`));
+  }
+
+  private startNewSession(): void {
+    this.currentSession = SessionManager.createSession(this.targetUrl);
+    console.log(chalk.green('\n  ✨ Nueva conversación iniciada.'));
   }
 
   private launchFreebuff(): void {
@@ -196,40 +280,45 @@ export class AgentChatREPL {
     try {
       this.storageStatePath = await runInteractiveLogin({ targetUrl: url });
       this.targetUrl = url;
+      this.currentSession.targetUrl = url;
+      SessionManager.saveSession(this.currentSession);
       console.log(chalk.green(`  🔑 Sesión autenticada guardada. Ahora puedes ejecutar "/audit" para auditar pantallas privadas.`));
     } catch (err) {
-      console.log(chalk.red(`  ✖ Error durante la sesión de login: ${err instanceof Error ? err.message : err}`));
+      console.log(chalk.red(`  ✖ Error en login: ${err instanceof Error ? err.message : err}`));
     }
   }
 
   private async runAudit(url: string): Promise<void> {
+    console.log(chalk.cyan(`\n  🚀 Iniciando auditoría UI/UX en ${url}...`));
     this.targetUrl = url;
-    console.log(chalk.cyan(`\n  🚀 Iniciando auditoría completa en ${url}...\n`));
+    this.currentSession.targetUrl = url;
 
-    const overrides: Record<string, unknown> = {
-      target: { url },
-      reports: { html: true, markdown: true, json: true, outputDir: './uiux-audit-results' },
-    };
+    try {
+      const config = loadConfig({
+        overrides: {
+          target: {
+            url,
+            storageState: this.storageStatePath,
+          },
+        },
+      });
+      const orchestrator = new Orchestrator(config, this.aiProvider ?? undefined);
+      const auditResult = await orchestrator.run();
 
-    if (this.storageStatePath && existsSync(this.storageStatePath)) {
-      overrides['auth'] = { storageState: this.storageStatePath };
-      console.log(chalk.dim(`  Usando sesión autenticada: ${this.storageStatePath}`));
+      this.latestFindings = auditResult.findings;
+      this.htmlReportPath = resolve(process.cwd(), './uiux-audit-results/report.html');
+      SessionManager.saveSession(this.currentSession);
+
+      console.log(chalk.green(`\n  ✓ Auditoría finalizada: ${this.latestFindings.length} hallazgos registrados.`));
+      console.log(chalk.dim('  Puedes escribir "/inspect" para navegar los hallazgos o consultarme cualquier duda técnica.'));
+    } catch (err) {
+      console.log(chalk.red(`  ✖ Error durante la auditoría: ${err instanceof Error ? err.message : err}`));
     }
-
-    const config = loadConfig({ overrides });
-
-    const orchestrator = new Orchestrator(config, this.aiProvider ?? undefined);
-    const result = await orchestrator.run();
-    this.latestFindings = result.findings;
-    this.htmlReportPath = resolve(process.cwd(), './uiux-audit-results/report.html');
-
-    console.log(chalk.green(`\n  ✓ Auditoría completada con éxito. ${result.findings.length} hallazgos registrados.`));
-    console.log(chalk.dim('  Puedes escribir "/inspect" para navegar los hallazgos o consultar al agente con Freebuff.'));
   }
 
   private async openInspector(): Promise<void> {
     if (this.latestFindings.length === 0) {
-      console.log(chalk.yellow('\n  ▲ No hay hallazgos disponibles. Ejecuta primero "/audit http://localhost:3333".'));
+      console.log(chalk.yellow('\n  ▲ No hay hallazgos disponibles. Ejecuta primero "/audit".'));
       return;
     }
 
@@ -269,9 +358,12 @@ export class AgentChatREPL {
 
   private printStatus(): void {
     console.log(chalk.cyan('\n  📊 Estado de la Sesión:'));
+    console.log(`  • Sesión actual:       ${chalk.bold(this.currentSession.id)}`);
+    console.log(`  • Título:              ${chalk.bold(this.currentSession.title)}`);
     console.log(`  • Target URL actual:   ${chalk.bold(this.targetUrl)}`);
     console.log(`  • Hallazgos cargados:  ${chalk.bold(this.latestFindings.length)}`);
-    console.log(`  • Motor IA activo:     ${this.aiProvider ? chalk.green('Freebuff / AI Connected') : chalk.yellow('No configurado (usa comandos /audit, /login, etc.)')}`);
+    console.log(`  • Mensajes en sesión:  ${chalk.bold(this.currentSession.messages.length)}`);
+    console.log(`  • Motor IA activo:     ${this.aiProvider ? chalk.green(`${this.aiProvider.capabilities().modelName} (Conectado)`) : chalk.yellow('No configurado')}`);
   }
 
   private async queryAI(input: string): Promise<void> {
@@ -281,40 +373,47 @@ export class AgentChatREPL {
 
     // Summary of findings for AI context
     const findingsSummary = this.latestFindings.length > 0
-      ? `Audit Context: Target: ${this.targetUrl}, Total Findings: ${this.latestFindings.length}. Sample findings:\n` +
-        JSON.stringify(this.latestFindings.slice(0, 8).map(f => ({
+      ? `Audit Context: Target: ${this.targetUrl}, Total Findings in memory: ${this.latestFindings.length}. Sample findings:\n` +
+        JSON.stringify(this.latestFindings.slice(0, 10).map((f) => ({
           category: f.category,
           severity: f.severity,
           title: f.title,
           description: f.description,
-          selector: f.evidence?.find(e => e.type === 'selector')?.selector,
+          selector: f.evidence?.find((e) => e.type === 'selector')?.selector,
           recommendation: f.recommendation,
         })), null, 2)
       : `No audit findings loaded in memory yet. Target URL: ${this.targetUrl}`;
 
     const systemPrompt =
-      'You are @uiux-auditor, an expert autonomous UI/UX and WCAG accessibility engineer.\n\n' +
-      `Current App Status:\n${findingsSummary}\n\n` +
-      'Conversation Guidelines:\n' +
-      '1. For simple greetings or casual small talk (e.g. "hola", "buenas", "hey"), greet the user back warmly, briefly, and naturally in Spanish. ' +
-      'Briefly mention the loaded target and findings count, and ask what they would like to inspect or fix. DO NOT output unsolicited tables, code, or huge report breakdowns on a simple greeting.\n' +
-      '2. When the user asks a question, requests analysis, or asks how to fix an issue, provide deep, prioritized, and actionable technical advice with clear code snippets.\n' +
-      '3. Be conversational, natural, and helpful.';
+      'You are @uiux-auditor, an autonomous lead UI/UX & WCAG accessibility auditor and expert frontend engineer.\n\n' +
+      `Target Application Context:\n${findingsSummary}\n\n` +
+      'Instructions:\n' +
+      '- Answer naturally, helpfully, and authentically in Spanish to whatever the user says or asks.\n' +
+      '- As a dedicated UI/UX and accessibility auditor, always naturally guide and steer the conversation toward discovering, reviewing, analyzing, or fixing UI/UX, responsive design, and WCAG accessibility defects in web applications.\n' +
+      '- If a target URL or audit findings exist, leverage them intelligently when helpful. If none are provided yet, proactively offer to audit their web application (e.g. asking for the target URL or suggesting /audit <url>).\n' +
+      '- When providing code remediations, use clean, production-ready HTML/CSS/JS examples.\n' +
+      '- Be concise, clear, and engaging.';
 
-    const messages = [
-      { role: 'system' as const, content: systemPrompt },
-      ...this.conversationHistory.slice(-8), // Keep recent conversation context
-      { role: 'user' as const, content: input },
-    ];
+    const recentHistory = this.currentSession.messages.slice(-10);
 
     try {
       const response = await this.aiProvider.complete({
-        messages,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          ...recentHistory,
+          { role: 'user', content: input },
+        ],
       });
 
-      // Save turn into history
-      this.conversationHistory.push({ role: 'user', content: input });
-      this.conversationHistory.push({ role: 'assistant', content: response.content });
+      // Update session title if first turn
+      if (this.currentSession.messages.length === 0) {
+        this.currentSession.title = input.length > 40 ? `${input.slice(0, 40)}...` : input;
+      }
+
+      // Append messages to current session
+      this.currentSession.messages.push({ role: 'user', content: input });
+      this.currentSession.messages.push({ role: 'assistant', content: response.content });
+      SessionManager.saveSession(this.currentSession);
 
       console.log(chalk.cyan('\n  🤖 @uiux-auditor:'));
       console.log(response.content);
