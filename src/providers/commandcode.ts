@@ -120,9 +120,10 @@ export class CommandCodeProvider implements LLMProvider {
 
     let lastError: Error | null = null;
 
+    this.requestCount++;
+
     for (let attempt = 0; attempt <= (this.config.maxRetries ?? 2); attempt++) {
       try {
-        this.requestCount++;
 
         const controller = new AbortController();
         const timeoutId = setTimeout(

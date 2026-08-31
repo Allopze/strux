@@ -7,7 +7,7 @@ import { createRuleFinding } from './engine.js';
  * Detect console errors and warnings associated with states.
  */
 export const consoleErrorsRule: Rule = {
-  id: 'sys-console-errors',
+  id: 'sys-console-error',
   name: 'Console Errors',
   category: 'SYSTEM',
   async run(state: UIState): Promise<Finding[]> {

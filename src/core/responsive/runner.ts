@@ -36,6 +36,9 @@ export class ResponsiveRunner {
       viewportEntries.push(['mobile-default', { width: 390, height: 844 }]);
     }
 
+    // Save original viewport to restore after responsive tests
+    const originalViewport = this.page.viewportSize() ?? { width: 1440, height: 900 };
+
     log.info(`Testing responsive design across ${viewportEntries.length} viewports...`);
 
     for (const [name, vp] of viewportEntries) {
@@ -54,6 +57,9 @@ export class ResponsiveRunner {
         }
       }
     }
+
+    // Restore original viewport for subsequent pipeline phases
+    await this.page.setViewportSize(originalViewport).catch(() => {});
 
     log.info(`Responsive analysis produced ${findings.length} findings`);
     return findings;

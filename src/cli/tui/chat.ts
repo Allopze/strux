@@ -24,6 +24,7 @@ export class AgentChatREPL {
   private htmlReportPath?: string;
   private storageStatePath?: string;
   private aiProvider?: LLMProvider | null;
+  private processing = false;
   private currentSession: ChatSession;
 
   constructor(options?: ChatREPLOptions | string) {
@@ -87,7 +88,7 @@ export class AgentChatREPL {
 
     rl.on('line', async (line) => {
       const input = line.trim();
-      if (!input) {
+      if (!input || this.processing) {
         rl.prompt();
         return;
       }
@@ -99,9 +100,12 @@ export class AgentChatREPL {
       }
 
       try {
+        this.processing = true;
         await this.handleUserInput(input);
       } catch (err) {
         console.log(chalk.red(`\n  ✖ Error: ${err instanceof Error ? err.message : err}`));
+      } finally {
+        this.processing = false;
       }
 
       console.log('');
@@ -296,10 +300,8 @@ export class AgentChatREPL {
     try {
       const config = loadConfig({
         overrides: {
-          target: {
-            url,
-            storageState: this.storageStatePath,
-          },
+          target: { url },
+          ...(this.storageStatePath ? { auth: { storageState: this.storageStatePath } } : {}),
         },
       });
       const orchestrator = new Orchestrator(config, this.aiProvider ?? undefined);

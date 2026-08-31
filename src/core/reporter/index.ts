@@ -86,7 +86,7 @@ export function generateHtmlReport(result: AuditResult, outputDir: string): stri
   ensureDir(path);
 
   const s = result.summary;
-  const findingsJson = JSON.stringify(result.findings);
+  const findingsJson = JSON.stringify(result.findings).replace(/<\//g, '<\\/');
 
   const html = `<!DOCTYPE html>
 <html lang="en">

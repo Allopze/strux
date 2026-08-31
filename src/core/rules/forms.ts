@@ -22,10 +22,12 @@ export const formLabelsRule: Rule = {
     );
 
     for (const el of formElements) {
-      const hasLabel = el.ariaLabel || el.id; // id implies <label for="..."> is possible
       const hasAriaLabel = el.ariaLabel && el.ariaLabel.trim().length > 0;
 
-      if (!hasLabel && !hasAriaLabel) {
+      // Without aria-label, the input may still have a <label for="id"> in the DOM,
+      // but we can't verify that from the state model alone. Elements without
+      // aria-label AND without an id are guaranteed to lack an accessible name.
+      if (!hasAriaLabel && !el.id) {
         findings.push(createRuleFinding({
           ruleId: 'forms-missing-label',
           title: `Form input without accessible label`,
@@ -35,6 +37,21 @@ export const formLabelsRule: Rule = {
           description: `A ${el.tag}${el.type ? `[type=${el.type}]` : ''} element has no associated label, aria-label, or aria-labelledby attribute.`,
           impact: 'Screen reader users cannot identify the purpose of this form field.',
           recommendation: 'Add a <label> element with a `for` attribute, or add an `aria-label` attribute.',
+          state,
+          selector: el.selector,
+        }));
+      } else if (!hasAriaLabel && el.id) {
+        // Has an id but no aria-label — a <label for> *might* exist in the DOM.
+        // Flag with lower confidence; axe-core or the verifier will confirm.
+        findings.push(createRuleFinding({
+          ruleId: 'forms-missing-label',
+          title: `Form input may lack an accessible label`,
+          severity: 'MEDIUM',
+          confidence: 0.6,
+          category: 'ACCESSIBILITY',
+          description: `A ${el.tag}${el.type ? `[type=${el.type}]` : ''} element has an id="${el.id}" but no aria-label. A <label for="${el.id}"> may or may not exist in the DOM.`,
+          impact: 'If no matching <label> element exists, screen reader users cannot identify this field.',
+          recommendation: 'Verify that a <label for="${el.id}"> exists, or add an explicit aria-label attribute.',
           state,
           selector: el.selector,
         }));

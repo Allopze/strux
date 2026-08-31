@@ -36,6 +36,9 @@ export class Explorer {
   private currentConsoleEntries: ConsoleEntry[] = [];
   private currentNetworkFailures: NetworkFailure[] = [];
 
+  // Listener cleanup handles
+  private listenerCleanup?: () => void;
+
   constructor(options: ExplorerOptions) {
     this.config = options.config;
     this.page = options.page;
@@ -106,6 +109,9 @@ export class Explorer {
     }
 
     log.info(`Exploration complete: ${this.states.size} states, ${this.transitions.length} transitions`);
+
+    // Remove event listeners to prevent duplicates if reused
+    this.listenerCleanup?.();
 
     return {
       states: this.states,
@@ -186,9 +192,10 @@ export class Explorer {
       const headings = await this.evidence.captureHeadings(this.page);
       const landmarks = await this.evidence.captureLandmarks(this.page);
 
+      const vp = this.page.viewportSize();
       const viewport = {
-        width: (await this.page.viewportSize())?.width ?? 1440,
-        height: (await this.page.viewportSize())?.height ?? 900,
+        width: vp?.width ?? 1440,
+        height: vp?.height ?? 900,
       };
 
       const stateId = nanoid(12);
@@ -304,7 +311,7 @@ export class Explorer {
 
 
   private setupListeners(): void {
-    this.page.on('console', (msg) => {
+    const onConsole = (msg: import('playwright').ConsoleMessage) => {
       const type = msg.type();
       if (type === 'error' || type === 'warning') {
         this.currentConsoleEntries.push({
@@ -314,26 +321,26 @@ export class Explorer {
           timestamp: Date.now(),
         });
       }
-    });
+    };
 
-    this.page.on('pageerror', (err) => {
+    const onPageError = (err: Error) => {
       this.currentConsoleEntries.push({
         type: 'error',
         text: `PageError: ${err.message.slice(0, 500)}`,
         timestamp: Date.now(),
       });
-    });
+    };
 
-    this.page.on('requestfailed', (request) => {
+    const onRequestFailed = (request: import('playwright').Request) => {
       this.currentNetworkFailures.push({
         url: request.url(),
         method: request.method(),
         error: request.failure()?.errorText,
         timestamp: Date.now(),
       });
-    });
+    };
 
-    this.page.on('response', (response) => {
+    const onResponse = (response: import('playwright').Response) => {
       if (response.status() >= 400) {
         this.currentNetworkFailures.push({
           url: response.url(),
@@ -342,7 +349,19 @@ export class Explorer {
           timestamp: Date.now(),
         });
       }
-    });
+    };
+
+    this.page.on('console', onConsole);
+    this.page.on('pageerror', onPageError);
+    this.page.on('requestfailed', onRequestFailed);
+    this.page.on('response', onResponse);
+
+    this.listenerCleanup = () => {
+      this.page.removeListener('console', onConsole);
+      this.page.removeListener('pageerror', onPageError);
+      this.page.removeListener('requestfailed', onRequestFailed);
+      this.page.removeListener('response', onResponse);
+    };
   }
 }
 

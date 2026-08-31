@@ -53,6 +53,7 @@ export class Logger {
 
   progress(label: string, current: number, total: number): void {
     if (LEVEL_PRIORITY[this.level] > LEVEL_PRIORITY.info) return;
+    if (total <= 0) return;
     const pct = Math.round((current / total) * 100);
     const bar = this.progressBar(current, total, 20);
     const prefix = this.prefix ? chalk.cyan(`[${this.prefix}]`) : '';

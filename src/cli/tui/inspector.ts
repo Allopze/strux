@@ -34,12 +34,14 @@ export class InteractiveInspector {
     return new Promise<void>((resolve) => {
       const handleKey = (str: string, key: readline.Key) => {
         if (key.ctrl && key.name === 'c') {
+          process.stdin.removeListener('keypress', handleKey);
           this.cleanup();
           resolve();
           return;
         }
 
         if (key.name === 'q' || key.name === 'escape') {
+          process.stdin.removeListener('keypress', handleKey);
           this.cleanup();
           resolve();
           return;
@@ -73,7 +75,14 @@ export class InteractiveInspector {
         }
       };
 
+      const handleEnd = () => {
+        process.stdin.removeListener('keypress', handleKey);
+        this.cleanup();
+        resolve();
+      };
+
       process.stdin.on('keypress', handleKey);
+      process.stdin.once('end', handleEnd);
     });
   }
 

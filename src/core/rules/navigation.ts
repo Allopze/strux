@@ -7,7 +7,7 @@ import { createRuleFinding } from './engine.js';
  * Detect navigation issues: dead links, dead buttons, broken routes.
  */
 export const deadLinksRule: Rule = {
-  id: 'nav-dead-links',
+  id: 'nav-dead-link',
   name: 'Dead Links',
   category: 'NAVIGATION',
   async run(state: UIState): Promise<Finding[]> {

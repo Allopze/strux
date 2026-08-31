@@ -371,6 +371,7 @@ function printSummary(s: AuditSummary): void {
   console.log(`  🟠 High:              ${s.findingsBySeverity.HIGH}`);
   console.log(`  🟡 Medium:            ${s.findingsBySeverity.MEDIUM}`);
   console.log(`  🔵 Low:               ${s.findingsBySeverity.LOW}`);
+  console.log(`  ℹ️  Info:              ${s.findingsBySeverity.INFO}`);
   console.log(`  Duration:             ${minutes}m ${seconds}s`);
   console.log('═══════════════════════════════════════════');
 }

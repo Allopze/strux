@@ -42,6 +42,7 @@ export class SessionManager {
 
   static saveSession(session: ChatSession): void {
     try {
+      if (!SessionManager.isValidSessionId(session.id)) return;
       const dir = SessionManager.getSessionsDir();
       session.updatedAt = new Date().toISOString();
       const filePath = resolve(dir, `${session.id}.json`);
@@ -95,6 +96,7 @@ export class SessionManager {
   }
 
   static deleteSession(id: string): boolean {
+    if (!SessionManager.isValidSessionId(id)) return false;
     const dir = SessionManager.getSessionsDir();
     const filePath = resolve(dir, `${id}.json`);
     if (existsSync(filePath)) {
@@ -102,5 +104,12 @@ export class SessionManager {
       return true;
     }
     return false;
+  }
+
+  /**
+   * Validate that a session ID does not contain path traversal characters.
+   */
+  private static isValidSessionId(id: string): boolean {
+    return /^[a-zA-Z0-9_-]+$/.test(id);
   }
 }
