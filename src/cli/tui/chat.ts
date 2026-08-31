@@ -106,70 +106,69 @@ export class AgentChatREPL {
   }
 
   private async handleUserInput(input: string): Promise<void> {
-    const lower = input.toLowerCase();
+    const lower = input.toLowerCase().trim();
 
-    // 1. Greetings
-    if (/^(hola|buenas|hey|hello|hi|buenos d[ií]as|buenas tardes|que tal)/i.test(lower)) {
-      console.log(chalk.cyan('\n  👋 ¡Hola! Soy tu asistente @uiux-auditor.'));
-      if (this.latestFindings.length > 0) {
-        console.log(`  Tengo cargados en memoria ${chalk.bold(this.latestFindings.length)} hallazgos de ${chalk.bold(this.targetUrl)}.`);
-      } else {
-        console.log(`  Listo para auditar cualquier aplicación web.`);
-      }
-      console.log('');
-      console.log(`  Puedes pedirme:`);
-      console.log(`  • ${chalk.bold('"Audita http://..."')} o ${chalk.cyan('/audit [url]')} para auditar una web.`);
-      console.log(`  • ${chalk.bold('"/login [url]"')} para iniciar sesión con ventana asistida.`);
-      console.log(`  • ${chalk.bold('"/inspect"')} para navegar los hallazgos con las flechas del teclado.`);
-      console.log(`  • O preguntarme sobre ${chalk.cyan('accesibilidad')}, ${chalk.cyan('responsive')}, ${chalk.cyan('errores críticos')} o ${chalk.cyan('código')}.`);
-      return;
-    }
-
-    // 2. Slash commands & intent matching
-    if (lower.startsWith('/login') || lower.includes('iniciar sesion') || lower.includes('inicia sesión') || lower.includes('hacer login') || lower.includes('autenticar')) {
+    // 1. Slash commands
+    if (lower.startsWith('/login') || lower.startsWith('login')) {
       const parts = input.split(/\s+/);
       const url = parts.find((p) => p.startsWith('http://') || p.startsWith('https://')) || this.targetUrl;
       await this.runLogin(url);
       return;
     }
 
-    if (lower.startsWith('/audit') || lower.startsWith('audita')) {
+    if (lower.startsWith('/audit') || lower.startsWith('audit')) {
       const parts = input.split(/\s+/);
       const url = parts.find((p) => p.startsWith('http://') || p.startsWith('https://')) || this.targetUrl;
       await this.runAudit(url);
       return;
     }
 
-    if (lower.startsWith('/inspect') || lower.includes('inspeccionar') || lower.includes('ver hallazgos')) {
+    if (lower.startsWith('/inspect') || lower === 'inspect') {
       await this.openInspector();
       return;
     }
 
-    if (lower.startsWith('/report') || lower.includes('abrir reporte') || lower.includes('ver reporte')) {
+    if (lower.startsWith('/report') || lower === 'report') {
       this.openReport();
       return;
     }
 
-    if (lower.startsWith('/skills') || lower.includes('habilidades') || lower.includes('que agentes tienes')) {
+    if (lower.startsWith('/skills') || lower === 'skills') {
       this.printSkills();
       return;
     }
 
-    if (lower.startsWith('/status') || lower.includes('estado')) {
+    if (lower.startsWith('/status') || lower === 'status') {
       this.printStatus();
       return;
     }
 
-    if (lower.startsWith('/help') || lower.startsWith('ayuda')) {
+    if (lower.startsWith('/help') || lower === 'help' || lower === 'ayuda') {
       this.printWelcome();
       return;
     }
 
-    // 2. Query findings or AI reasoning
+    // 2. All conversational queries go directly to Freebuff / AI Provider
+    if (!this.aiProvider) {
+      this.aiProvider = CommandCodeProvider.fromEnv();
+    }
+
     if (this.aiProvider) {
       await this.queryAI(input);
     } else {
-      this.handleDeterministicQuery(lower);
+      console.log(chalk.yellow('\n  ▲ Freebuff / AI no configurado en la terminal.'));
+      console.log('  Para conversar y razonar interactivamente con el agente @uiux-auditor usando Freebuff:');
+      console.log(`    ${chalk.bold('export FREEBUFF_API_KEY="tu-freebuff-api-key"')}`);
+      console.log(`    ${chalk.bold('export FREEBUFF_MODEL="nombre-del-modelo"')}`);
+      console.log(chalk.dim('    (o usa OPENAI_API_KEY / COMMANDCODE_API_KEY)'));
+      console.log('');
+      console.log('  Comandos directos de herramientas disponibles:');
+      console.log(`    ${chalk.cyan('/audit [url]')}   → Iniciar auditoría completa`);
+      console.log(`    ${chalk.cyan('/login [url]')}   → Iniciar sesión asistida con navegador`);
+      console.log(`    ${chalk.cyan('/inspect')}        → Abrir inspector interactivo de hallazgos`);
+      console.log(`    ${chalk.cyan('/report')}         → Abrir reporte HTML en navegador`);
+      console.log(`    ${chalk.cyan('/skills')}         → Ver squad de agentes`);
+      console.log(`    ${chalk.cyan('/status')}         → Ver estado de la sesión`);
     }
   }
 
@@ -205,7 +204,7 @@ export class AgentChatREPL {
     this.htmlReportPath = resolve(process.cwd(), './uiux-audit-results/report.html');
 
     console.log(chalk.green(`\n  ✓ Auditoría completada con éxito. ${result.findings.length} hallazgos registrados.`));
-    console.log(chalk.dim('  Puedes escribir "/inspect" para navegar los hallazgos o preguntar "¿cuáles son los más graves?".'));
+    console.log(chalk.dim('  Puedes escribir "/inspect" para navegar los hallazgos o consultar al agente con Freebuff.'));
   }
 
   private async openInspector(): Promise<void> {
@@ -252,91 +251,33 @@ export class AgentChatREPL {
     console.log(chalk.cyan('\n  📊 Estado de la Sesión:'));
     console.log(`  • Target URL actual:   ${chalk.bold(this.targetUrl)}`);
     console.log(`  • Hallazgos cargados:  ${chalk.bold(this.latestFindings.length)}`);
-    console.log(`  • Motor IA activo:     ${this.aiProvider ? chalk.green('CommandCode / OpenAI') : chalk.dim('Modo Determinista Local (0 tokens)')}`);
-  }
-
-  private handleDeterministicQuery(lower: string): void {
-    if (this.latestFindings.length === 0) {
-      console.log(chalk.yellow('\n  ▲ No hay auditoría en memoria. Ejecuta primero "/audit" o escribe "audita http://localhost:3333".'));
-      return;
-    }
-
-    if (lower.includes('accesib') || lower.includes('wcag')) {
-      const a11y = this.latestFindings.filter((f) => f.category === 'ACCESSIBILITY');
-      console.log(chalk.bold.cyan(`\n  ♿ Hallazgos de Accesibilidad (${a11y.length}):`));
-      for (const f of a11y.slice(0, 8)) {
-        console.log(`  • [${f.severity}] ${chalk.bold(f.title)}`);
-        if (f.recommendation) console.log(`    💡 ${chalk.dim(f.recommendation)}`);
-      }
-      return;
-    }
-
-    if (lower.includes('responsive') || lower.includes('móvil') || lower.includes('movil')) {
-      const resp = this.latestFindings.filter((f) => f.category === 'RESPONSIVE');
-      console.log(chalk.bold.cyan(`\n  📱 Hallazgos Responsive (${resp.length}):`));
-      if (resp.length === 0) {
-        console.log(chalk.green('  ✓ No se encontraron problemas de overflow horizontal ni clipping responsive.'));
-      } else {
-        for (const f of resp) {
-          console.log(`  • [${f.severity}] ${f.title}`);
-        }
-      }
-      return;
-    }
-
-    if (lower.includes('crític') || lower.includes('critic') || lower.includes('alto') || lower.includes('high') || lower.includes('grave')) {
-      const high = this.latestFindings.filter((f) => f.severity === 'CRITICAL' || f.severity === 'HIGH');
-      console.log(chalk.bold.red(`\n  🔴 Hallazgos Críticos y Altos (${high.length}):`));
-      if (high.length === 0) {
-        console.log(chalk.green('  ✓ No se detectaron problemas de severidad CRITICAL ni HIGH.'));
-      } else {
-        for (const f of high) {
-          console.log(`  • ${chalk.bold(f.title)} (${f.category})`);
-          if (f.recommendation) console.log(`    💡 ${f.recommendation}`);
-        }
-      }
-      return;
-    }
-
-    if (lower.includes('código') || lower.includes('codigo') || lower.includes('archivo') || lower.includes('fuente')) {
-      const withFiles = this.latestFindings.filter((f) => f.suspectedSourceFiles && f.suspectedSourceFiles.length > 0);
-      console.log(chalk.bold.cyan(`\n  📁 Archivos fuente vinculados (${withFiles.length}):`));
-      for (const f of withFiles.slice(0, 8)) {
-        console.log(`  • ${f.title}`);
-        for (const s of f.suspectedSourceFiles!) {
-          console.log(`    ↳ ${chalk.green(s.file)}${s.line ? ':' + s.line : ''} (conf: ${Math.round(s.confidence * 100)}%)`);
-        }
-      }
-      return;
-    }
-
-    // Default summary
-    console.log(chalk.cyan(`\n  🤖 Resumen del Agente:`));
-    console.log(`  He analizado ${this.targetUrl} y registrado ${this.latestFindings.length} hallazgos.`);
-    console.log(`  • Puedes consultar sobre "accesibilidad", "responsive", "hallazgos críticos" o "código".`);
-    console.log(`  • También puedes escribir "/inspect" para navegar interactivamente con las flechas del teclado.`);
+    console.log(`  • Motor IA activo:     ${this.aiProvider ? chalk.green('Freebuff / AI Connected') : chalk.yellow('No configurado (usa comandos /audit, /login, etc.)')}`);
   }
 
   private async queryAI(input: string): Promise<void> {
     if (!this.aiProvider) return;
-    console.log(chalk.dim('\n  Pensando... 🧠'));
+    console.log(chalk.dim('\n  Consultando a Freebuff AI... 🧠'));
 
-    const context = `Target: ${this.targetUrl}\nTotal findings: ${this.latestFindings.length}\nSample findings:\n` +
-      JSON.stringify(this.latestFindings.slice(0, 5), null, 2);
+    const context = `Target: ${this.targetUrl}\nTotal findings in memory: ${this.latestFindings.length}\nSample findings:\n` +
+      JSON.stringify(this.latestFindings.slice(0, 10), null, 2);
 
     try {
       const response = await this.aiProvider.complete({
         messages: [
-          { role: 'system', content: 'You are @uiux-auditor, an expert UI/UX and accessibility lead engineer. Respond concisely in Spanish.' },
+          {
+            role: 'system',
+            content:
+              'You are @uiux-auditor, an expert autonomous UI/UX and accessibility lead engineer powered by Freebuff. ' +
+              'Answer the user question directly, concisely, and helpfully in Spanish based on the current audit context.',
+          },
           { role: 'user', content: `Context:\n${context}\n\nUser Question:\n${input}` },
         ],
       });
 
-      console.log(chalk.cyan('\n  🤖 @uiux-auditor:'));
+      console.log(chalk.cyan('\n  🤖 @uiux-auditor (Freebuff AI):'));
       console.log(response.content);
     } catch (err) {
-      console.log(chalk.yellow(`  ▲ Error consultando al modelo: ${err instanceof Error ? err.message : err}`));
-      this.handleDeterministicQuery(input.toLowerCase());
+      console.log(chalk.red(`\n  ✖ Error consultando a Freebuff AI: ${err instanceof Error ? err.message : err}`));
     }
   }
 }

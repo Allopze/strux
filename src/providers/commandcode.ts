@@ -34,9 +34,25 @@ export class CommandCodeProvider implements LLMProvider {
   }
 
   static fromEnv(overrides?: Partial<CommandCodeConfig>): CommandCodeProvider | null {
-    const apiKey = overrides?.apiKey || process.env['COMMANDCODE_API_KEY'];
-    const baseUrl = overrides?.baseUrl || process.env['COMMANDCODE_BASE_URL'];
-    const model = overrides?.model || process.env['COMMANDCODE_MODEL'];
+    const apiKey =
+      overrides?.apiKey ||
+      process.env['FREEBUFF_API_KEY'] ||
+      process.env['COMMANDCODE_API_KEY'] ||
+      process.env['OPENAI_API_KEY'];
+
+    const baseUrl =
+      overrides?.baseUrl ||
+      process.env['FREEBUFF_BASE_URL'] ||
+      process.env['COMMANDCODE_BASE_URL'] ||
+      process.env['OPENAI_BASE_URL'] ||
+      (apiKey ? 'https://api.openai.com/v1' : undefined);
+
+    const model =
+      overrides?.model ||
+      process.env['FREEBUFF_MODEL'] ||
+      process.env['COMMANDCODE_MODEL'] ||
+      process.env['OPENAI_MODEL'] ||
+      (apiKey ? 'gpt-4o' : undefined);
 
     if (!apiKey || !baseUrl || !model) {
       return null;
