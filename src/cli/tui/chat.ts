@@ -2,7 +2,7 @@ import chalk from 'chalk';
 import readline from 'node:readline';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { exec } from 'node:child_process';
+import { exec, spawnSync } from 'node:child_process';
 import type { Finding } from '../../core/findings/types.js';
 import { Orchestrator } from '../../agents/orchestrator.js';
 import { loadConfig } from '../../core/config/loader.js';
@@ -123,6 +123,11 @@ export class AgentChatREPL {
       return;
     }
 
+    if (lower.startsWith('/freebuff') || lower === 'freebuff') {
+      this.launchFreebuff();
+      return;
+    }
+
     if (lower.startsWith('/inspect') || lower === 'inspect') {
       await this.openInspector();
       return;
@@ -156,19 +161,28 @@ export class AgentChatREPL {
     if (this.aiProvider) {
       await this.queryAI(input);
     } else {
-      console.log(chalk.yellow('\n  ▲ Freebuff / AI no configurado en la terminal.'));
-      console.log('  Para conversar y razonar interactivamente con el agente @uiux-auditor usando Freebuff:');
-      console.log(`    ${chalk.bold('export FREEBUFF_API_KEY="tu-freebuff-api-key"')}`);
-      console.log(`    ${chalk.bold('export FREEBUFF_MODEL="nombre-del-modelo"')}`);
-      console.log(chalk.dim('    (o usa OPENAI_API_KEY / COMMANDCODE_API_KEY)'));
+      console.log(chalk.cyan('\n  🤖 Freebuff es un agente de terminal autónomo que no requiere API Keys.'));
+      console.log('  Tienes dos formas de usar Freebuff con UI/UX Auditor:');
+      console.log(`  1. Escribe ${chalk.bold.green('/freebuff')} aquí para abrir el agente Freebuff con este proyecto cargado.`);
+      console.log(`  2. O ejecuta ${chalk.bold.green('freebuff')} directamente en tu terminal.`);
+      console.log(chalk.dim('     Freebuff leerá AGENTS.md, ejecutará auditorías y corregirá el código automáticamente.'));
       console.log('');
-      console.log('  Comandos directos de herramientas disponibles:');
+      console.log('  Comandos de herramientas disponibles:');
       console.log(`    ${chalk.cyan('/audit [url]')}   → Iniciar auditoría completa`);
       console.log(`    ${chalk.cyan('/login [url]')}   → Iniciar sesión asistida con navegador`);
       console.log(`    ${chalk.cyan('/inspect')}        → Abrir inspector interactivo de hallazgos`);
       console.log(`    ${chalk.cyan('/report')}         → Abrir reporte HTML en navegador`);
-      console.log(`    ${chalk.cyan('/skills')}         → Ver squad de agentes`);
-      console.log(`    ${chalk.cyan('/status')}         → Ver estado de la sesión`);
+      console.log(`    ${chalk.cyan('/freebuff')}       → Abrir el agente de codificación Freebuff`);
+    }
+  }
+
+  private launchFreebuff(): void {
+    console.log(chalk.cyan('\n  🚀 Lanzando agente de codificación Freebuff...\n'));
+    try {
+      spawnSync('freebuff', [], { stdio: 'inherit', cwd: process.cwd() });
+      this.printWelcome();
+    } catch {
+      console.log(chalk.yellow('  ▲ No se pudo iniciar Freebuff. Asegúrate de instalarlo con: npm install -g freebuff'));
     }
   }
 
