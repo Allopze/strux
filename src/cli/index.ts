@@ -272,14 +272,13 @@ program
       console.log(chalk.dim('    Run: uiux-audit init'));
     }
 
-    // Check CommandCode env vars
-    const ccKey = process.env['COMMANDCODE_API_KEY'];
-    const ccUrl = process.env['COMMANDCODE_BASE_URL'];
-    const ccModel = process.env['COMMANDCODE_MODEL'];
-    if (ccKey && ccUrl && ccModel) {
-      console.log(chalk.green('  ✓ CommandCode env vars configured'));
+    // Check CommandCode / OpenAI env vars
+    const ccKey = process.env['COMMANDCODE_API_KEY'] || process.env['OPENAI_API_KEY'];
+    const ccModel = process.env['COMMANDCODE_MODEL'] || process.env['OPENAI_MODEL'];
+    if (ccKey) {
+      console.log(chalk.green(`  ✓ CommandCode / AI API Key configured (model: ${ccModel || 'gpt-4o'})`));
     } else {
-      console.log(chalk.dim('  ○ CommandCode not configured (optional)'));
+      console.log(chalk.dim('  ○ CommandCode / AI API Key not configured (optional)'));
     }
 
     console.log('');
