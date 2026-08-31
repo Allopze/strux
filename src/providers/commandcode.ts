@@ -36,27 +36,36 @@ export class CommandCodeProvider implements LLMProvider {
   static fromEnv(overrides?: Partial<CommandCodeConfig>): CommandCodeProvider | null {
     const apiKey =
       overrides?.apiKey ||
-      process.env['FREEBUFF_API_KEY'] ||
       process.env['COMMANDCODE_API_KEY'] ||
+      process.env['FREEBUFF_API_KEY'] ||
       process.env['OPENAI_API_KEY'];
 
-    const baseUrl =
+    if (!apiKey) {
+      return null;
+    }
+
+    const isCommandCodeKey = apiKey.startsWith('user_') || Boolean(process.env['COMMANDCODE_API_KEY']);
+
+    let baseUrl =
       overrides?.baseUrl ||
-      process.env['FREEBUFF_BASE_URL'] ||
       process.env['COMMANDCODE_BASE_URL'] ||
+      process.env['FREEBUFF_BASE_URL'] ||
       process.env['OPENAI_BASE_URL'] ||
-      (apiKey ? 'https://api.openai.com/v1' : undefined);
+      (isCommandCodeKey ? 'https://api.commandcode.ai/provider/v1' : 'https://api.openai.com/v1');
+
+    // Auto-correct common typos like .com -> .ai/provider/v1
+    if (baseUrl.includes('commandcode.com')) {
+      baseUrl = 'https://api.commandcode.ai/provider/v1';
+    } else if (baseUrl === 'https://api.commandcode.ai' || baseUrl === 'https://api.commandcode.ai/v1') {
+      baseUrl = 'https://api.commandcode.ai/provider/v1';
+    }
 
     const model =
       overrides?.model ||
-      process.env['FREEBUFF_MODEL'] ||
       process.env['COMMANDCODE_MODEL'] ||
+      process.env['FREEBUFF_MODEL'] ||
       process.env['OPENAI_MODEL'] ||
-      (apiKey ? 'gpt-4o' : undefined);
-
-    if (!apiKey || !baseUrl || !model) {
-      return null;
-    }
+      (isCommandCodeKey ? 'xiaomi/mimo-v2.5' : 'gpt-4o');
 
     return new CommandCodeProvider({
       apiKey,
