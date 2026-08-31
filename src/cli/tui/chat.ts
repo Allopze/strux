@@ -7,7 +7,6 @@ import type { Finding } from '../../core/findings/types.js';
 import { Orchestrator } from '../../agents/orchestrator.js';
 import { loadConfig } from '../../core/config/loader.js';
 import { CommandCodeProvider } from '../../providers/commandcode.js';
-import { FreebuffProvider } from '../../providers/freebuff.js';
 import { InteractiveInspector } from './inspector.js';
 import { runInteractiveLogin } from '../../core/browser/auth.js';
 import type { LLMProvider } from '../../providers/types.js';
@@ -21,11 +20,7 @@ export class AgentChatREPL {
 
   constructor(targetUrl: string = 'http://localhost:3333') {
     this.targetUrl = targetUrl;
-    if (FreebuffProvider.isAvailable()) {
-      this.aiProvider = new FreebuffProvider();
-    } else {
-      this.aiProvider = CommandCodeProvider.fromEnv();
-    }
+    this.aiProvider = CommandCodeProvider.fromEnv();
     if (existsSync('./auth/storageState.json')) {
       this.storageStatePath = resolve('./auth/storageState.json');
     }
@@ -88,16 +83,19 @@ export class AgentChatREPL {
   }
 
   private printWelcome(): void {
-    const modelName = this.aiProvider?.capabilities().modelName || 'MiMo 2.5 (Freebuff Engine)';
+    const aiLabel = this.aiProvider
+      ? `  🧠 Motor IA: ${this.aiProvider.capabilities().modelName} (Conectado)`
+      : '  🛠️  Modo: Motor de Auditoría Local (o /freebuff)';
     console.log(chalk.cyan('┌────────────────────────────────────────────────────────────────────────┐'));
     console.log(chalk.cyan('│') + chalk.bold.white('  🤖 UI/UX AUDITOR — Interactive Agent Chat REPL') + ' '.repeat(24) + chalk.cyan('│'));
-    console.log(chalk.cyan('│') + chalk.green(`  🧠 Motor IA: ${modelName} · En segundo plano`) + ' '.repeat(Math.max(0, 68 - 17 - modelName.length)) + chalk.cyan('│'));
+    console.log(chalk.cyan('│') + chalk.green(aiLabel) + ' '.repeat(Math.max(0, 68 - aiLabel.length)) + chalk.cyan('│'));
     console.log(chalk.cyan('├────────────────────────────────────────────────────────────────────────┤'));
     console.log(chalk.cyan('│') + chalk.dim('  Comandos rápidos:                                                     ') + chalk.cyan('│'));
     console.log(chalk.cyan('│') + chalk.white('  • /audit [url]  ') + chalk.dim('→ Iniciar auditoría completa') + ' '.repeat(26) + chalk.cyan('│'));
     console.log(chalk.cyan('│') + chalk.white('  • /login [url]  ') + chalk.dim('→ Iniciar sesión asistida (OAuth, 2FA, JWT)') + ' '.repeat(11) + chalk.cyan('│'));
     console.log(chalk.cyan('│') + chalk.white('  • /inspect      ') + chalk.dim('→ Abrir inspector interactivo de hallazgos') + ' '.repeat(14) + chalk.cyan('│'));
     console.log(chalk.cyan('│') + chalk.white('  • /report       ') + chalk.dim('→ Abrir reporte HTML en navegador') + ' '.repeat(23) + chalk.cyan('│'));
+    console.log(chalk.cyan('│') + chalk.white('  • /freebuff     ') + chalk.dim('→ Abrir agente Freebuff (MiMo 2.5 gratis)') + ' '.repeat(17) + chalk.cyan('│'));
     console.log(chalk.cyan('│') + chalk.white('  • /skills       ') + chalk.dim('→ Ver habilidades del squad de agentes') + ' '.repeat(18) + chalk.cyan('│'));
     console.log(chalk.cyan('│') + chalk.white('  • /status       ') + chalk.dim('→ Ver estado de la sesión') + ' '.repeat(31) + chalk.cyan('│'));
     console.log(chalk.cyan('│') + chalk.white('  • /exit         ') + chalk.dim('→ Salir del chat') + ' '.repeat(40) + chalk.cyan('│'));
