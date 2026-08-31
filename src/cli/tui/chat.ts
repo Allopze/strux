@@ -108,7 +108,24 @@ export class AgentChatREPL {
   private async handleUserInput(input: string): Promise<void> {
     const lower = input.toLowerCase();
 
-    // 1. Slash commands & intent matching
+    // 1. Greetings
+    if (/^(hola|buenas|hey|hello|hi|buenos d[ií]as|buenas tardes|que tal)/i.test(lower)) {
+      console.log(chalk.cyan('\n  👋 ¡Hola! Soy tu asistente @uiux-auditor.'));
+      if (this.latestFindings.length > 0) {
+        console.log(`  Tengo cargados en memoria ${chalk.bold(this.latestFindings.length)} hallazgos de ${chalk.bold(this.targetUrl)}.`);
+      } else {
+        console.log(`  Listo para auditar cualquier aplicación web.`);
+      }
+      console.log('');
+      console.log(`  Puedes pedirme:`);
+      console.log(`  • ${chalk.bold('"Audita http://..."')} o ${chalk.cyan('/audit [url]')} para auditar una web.`);
+      console.log(`  • ${chalk.bold('"/login [url]"')} para iniciar sesión con ventana asistida.`);
+      console.log(`  • ${chalk.bold('"/inspect"')} para navegar los hallazgos con las flechas del teclado.`);
+      console.log(`  • O preguntarme sobre ${chalk.cyan('accesibilidad')}, ${chalk.cyan('responsive')}, ${chalk.cyan('errores críticos')} o ${chalk.cyan('código')}.`);
+      return;
+    }
+
+    // 2. Slash commands & intent matching
     if (lower.startsWith('/login') || lower.includes('iniciar sesion') || lower.includes('inicia sesión') || lower.includes('hacer login') || lower.includes('autenticar')) {
       const parts = input.split(/\s+/);
       const url = parts.find((p) => p.startsWith('http://') || p.startsWith('https://')) || this.targetUrl;

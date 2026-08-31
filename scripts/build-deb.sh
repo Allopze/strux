@@ -40,7 +40,7 @@ cat <<EOF > "$BUILD_TMP/$PKG_DIR/DEBIAN/postinst"
 set -e
 # Install Playwright browser dependencies if missing
 if command -v npx >/dev/null 2>&1; then
-    npx playwright install chromium || true
+    npx playwright install chromium >/dev/null 2>&1 || true
 fi
 EOF
 chmod 755 "$BUILD_TMP/$PKG_DIR/DEBIAN/postinst"

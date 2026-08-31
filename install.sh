@@ -56,7 +56,7 @@ npm run build --silent
 
 # 4. Install Playwright Chromium if missing
 echo -e "${CYAN}==>${RESET} Ensuring Playwright browser dependencies..."
-npx playwright install chromium --silent || true
+npx playwright install chromium >/dev/null 2>&1 || true
 
 # 5. Create symlink in ~/.local/bin
 ln -sf "$INSTALL_DIR/dist/cli/index.js" "$BIN_DIR/uiux-audit"
