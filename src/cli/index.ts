@@ -132,15 +132,6 @@ program
     }
   });
 
-// ── chat ──────────────────────────────────────────────────────────────
-program
-  .command('chat [url]')
-  .description('Start an interactive terminal chat with @uiux-auditor')
-  .action(async (url?: string) => {
-    const targetUrl = url ?? 'http://localhost:3333';
-    const chat = new AgentChatREPL(targetUrl);
-    await chat.start();
-  });
 
 // ── inspect ───────────────────────────────────────────────────────────
 program
