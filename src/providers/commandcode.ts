@@ -60,12 +60,19 @@ export class CommandCodeProvider implements LLMProvider {
       baseUrl = 'https://api.commandcode.ai/provider/v1';
     }
 
-    const model =
+    let model =
       overrides?.model ||
       process.env['COMMANDCODE_MODEL'] ||
       process.env['FREEBUFF_MODEL'] ||
       process.env['OPENAI_MODEL'] ||
-      (isCommandCodeKey ? 'xiaomi/mimo-v2.5' : 'gpt-4o');
+      (isCommandCodeKey ? 'MiniMaxAI/MiniMax-M3' : 'gpt-4o');
+
+    // Auto-normalize friendly model aliases to Command Code API IDs
+    if (model === 'minimax-m3-free' || model === 'minimax/minimax-m3-free' || model === 'minimax-m3') {
+      model = 'MiniMaxAI/MiniMax-M3';
+    } else if (model === 'mimo' || model === 'mimo-2.5' || model === 'mimo-v2.5' || model === 'xiaomi-mimo') {
+      model = 'xiaomi/mimo-v2.5';
+    }
 
     return new CommandCodeProvider({
       apiKey,
