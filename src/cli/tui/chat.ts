@@ -9,7 +9,7 @@ import { loadConfig } from '../../core/config/loader.js';
 import { CommandCodeProvider } from '../../providers/commandcode.js';
 import { InteractiveInspector } from './inspector.js';
 import { runInteractiveLogin } from '../../core/browser/auth.js';
-import type { LLMProvider } from '../../providers/types.js';
+import type { LLMProvider, CompletionMessage } from '../../providers/types.js';
 
 export class AgentChatREPL {
   private targetUrl: string;
@@ -17,6 +17,7 @@ export class AgentChatREPL {
   private htmlReportPath?: string;
   private storageStatePath?: string;
   private aiProvider?: LLMProvider | null;
+  private conversationHistory: CompletionMessage[] = [];
 
   constructor(targetUrl: string = 'http://localhost:3333') {
     this.targetUrl = targetUrl;
@@ -278,21 +279,42 @@ export class AgentChatREPL {
     const model = this.aiProvider.capabilities().modelName;
     console.log(chalk.dim(`\n  Consultando a la IA (${model})... 🧠`));
 
-    const context = `Target: ${this.targetUrl}\nTotal findings in memory: ${this.latestFindings.length}\nSample findings:\n` +
-      JSON.stringify(this.latestFindings.slice(0, 10), null, 2);
+    // Summary of findings for AI context
+    const findingsSummary = this.latestFindings.length > 0
+      ? `Audit Context: Target: ${this.targetUrl}, Total Findings: ${this.latestFindings.length}. Sample findings:\n` +
+        JSON.stringify(this.latestFindings.slice(0, 8).map(f => ({
+          category: f.category,
+          severity: f.severity,
+          title: f.title,
+          description: f.description,
+          selector: f.evidence?.find(e => e.type === 'selector')?.selector,
+          recommendation: f.recommendation,
+        })), null, 2)
+      : `No audit findings loaded in memory yet. Target URL: ${this.targetUrl}`;
+
+    const systemPrompt =
+      'You are @uiux-auditor, an expert autonomous UI/UX and WCAG accessibility engineer.\n\n' +
+      `Current App Status:\n${findingsSummary}\n\n` +
+      'Conversation Guidelines:\n' +
+      '1. For simple greetings or casual small talk (e.g. "hola", "buenas", "hey"), greet the user back warmly, briefly, and naturally in Spanish. ' +
+      'Briefly mention the loaded target and findings count, and ask what they would like to inspect or fix. DO NOT output unsolicited tables, code, or huge report breakdowns on a simple greeting.\n' +
+      '2. When the user asks a question, requests analysis, or asks how to fix an issue, provide deep, prioritized, and actionable technical advice with clear code snippets.\n' +
+      '3. Be conversational, natural, and helpful.';
+
+    const messages = [
+      { role: 'system' as const, content: systemPrompt },
+      ...this.conversationHistory.slice(-8), // Keep recent conversation context
+      { role: 'user' as const, content: input },
+    ];
 
     try {
       const response = await this.aiProvider.complete({
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You are @uiux-auditor, an expert autonomous UI/UX and accessibility lead engineer. ' +
-              'Answer the user question directly, concisely, and helpfully in Spanish based on the current audit context.',
-          },
-          { role: 'user', content: `Context:\n${context}\n\nUser Question:\n${input}` },
-        ],
+        messages,
       });
+
+      // Save turn into history
+      this.conversationHistory.push({ role: 'user', content: input });
+      this.conversationHistory.push({ role: 'assistant', content: response.content });
 
       console.log(chalk.cyan('\n  🤖 @uiux-auditor:'));
       console.log(response.content);
