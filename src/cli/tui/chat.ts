@@ -295,7 +295,7 @@ export class AgentChatREPL {
         ],
       });
 
-      console.log(chalk.cyan('\n  🤖 @uiux-auditor (Freebuff AI):'));
+      console.log(chalk.cyan('\n  🤖 @uiux-auditor:'));
       console.log(response.content);
     } catch (err) {
       console.log(chalk.red(`\n  ✖ Error consultando a Freebuff AI: ${err instanceof Error ? err.message : err}`));
